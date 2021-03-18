@@ -12,6 +12,7 @@ import time
 import random
 import os
 import csv
+import math
 import random
 import numpy as np
 from matplotlib import pyplot as plt
@@ -24,6 +25,23 @@ from torch import optim
 from torch.nn import functional as F
 
 
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+    
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
+    
+    def forward(self, x):
+        x = x + self.pe[:x.size(0), :]
+        return self.dropout(x)
+
 class MyTransformer(nn.Module):
     def __init__(self,d_model,nhead,num_layer):
         super(MyTransformer,self).__init__()
@@ -32,6 +50,7 @@ class MyTransformer(nn.Module):
         self.nhead = nhead
         self.num_layer = num_layer
         #Model Architecture
+        self.pe = PositionalEncoding(d_model)
         encoderLayer = nn.TransformerEncoderLayer(self.d_model, self.nhead)
         self.encoder = nn.TransformerEncoder(encoderLayer,self.num_layer)
         self.layer1 = nn.Linear(d_model,2048)
@@ -41,6 +60,7 @@ class MyTransformer(nn.Module):
     def forward(self,shot_feature):
         num_shot = shot_feature.shape[0]
         src = shot_feature.view(num_shot,1,self.d_model)
+        src = self.pe(src)
         attention_out = self.encoder(src)
         
         x = F.relu(self.layer1(attention_out))
@@ -267,8 +287,8 @@ def train_middle_shot(saved=False):
     lossfun = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(),lr=0.1)
     scheduler = optim.lr_scheduler.StepLR(optimizer, 5)
-    epoches = 4
-    eval_rate = 2
+    epoches = 40
+    eval_rate = 5
     nshots = 540
     f_score = 0
     for epoch in range(epoches):
@@ -298,9 +318,10 @@ def train_middle_shot(saved=False):
             lossout.backward()
             optimizer.zero_grad()
             optimizer.step()
+        print("Loss :{}".format(loss/len(training)))
         
         if epoch % eval_rate == eval_rate-1:
-            tmp = evaluate(model,video_list)
+            tmp = evaluate(model,video_list,mask=8)
             scheduler.step()
             if tmp>=f_score:
                 f_score = tmp
@@ -364,59 +385,60 @@ def evaluate(model,video_list,mask=30):
 
     
 if __name__ == '__main__':
-    # train_middle_shot(saved=False)
-    ground_dir = '../'
-    video_list = ['01_From_Pole_to_Pole']
+    train_middle_shot(saved=False)
+    # ground_dir = '../'
+    # video_list = ['01_From_Pole_to_Pole','02_Mountains','03_Ice_Worlds','04_Great_Plains','05_Jungles','06_Seasonal_Forests','07_Fresh_Water',
+    #               '08_Ocean_Deep','09_Shallow_Seas','10_Caves','11_Deserts']
     
-    transcript_path = os.path.join(ground_dir,'transcript')
-    gt_path = os.path.join(ground_dir,'annotations/scenes/annotator_1/')
-    cuda = False
-    check_file(video_list,ground_dir+'bbc_dataset_video')
-    device = torch.device('cuda' if cuda else 'cpu')
-    model = MyTransformer(4396,4,6)
-    lossfun = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(),lr=0.1)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, 5)
-    epoches = 10
-    eval_rate = 5
-    nshots = 540
-    f_score = 0
-    for epoch in range(epoches):
-        loss = 0
-        # training, testing = train_test_split(video_list)
-        print('Epoch :{}...'.format(epoch))
-        for video_name in video_list:
-            model.train()
-            visual_feature_dir = os.path.join(ground_dir,'parse_data',video_name)
-            print("{} Training Start...".format(video_name))
+    # transcript_path = os.path.join(ground_dir,'transcript')
+    # gt_path = os.path.join(ground_dir,'annotations/scenes/annotator_1/')
+    # cuda = False
+    # check_file(video_list,ground_dir+'bbc_dataset_video')
+    # device = torch.device('cuda' if cuda else 'cpu')
+    # model = MyTransformer(4396,4,6)
+    # lossfun = nn.CrossEntropyLoss()
+    # optimizer = optim.SGD(model.parameters(),lr=0.1)
+    # scheduler = optim.lr_scheduler.StepLR(optimizer, 5)
+    # epoches =30
+    # eval_rate = 5
+    # nshots = 540
+    # f_score = 0
+    # for epoch in range(epoches):
+    #     loss = 0
+    #     # training, testing = train_test_split(video_list)
+    #     print('Epoch :{}...'.format(epoch))
+    #     for video_name in video_list:
+    #         model.train()
+    #         visual_feature_dir = os.path.join(ground_dir,'parse_data',video_name)
+    #         print("{} Training Start...".format(video_name))
         
-            transcript = open(os.path.join(transcript_path,video_name+'_doc2vec.txt'),'r').readlines()
-            transcript = [each.replace('/n','').replace('[','').replace(']','') for each in transcript]
-            temp=[]
-            for eachShot in transcript:
-              temp.append([float(each) for each in eachShot.split(',')])
-            transcript = torch.tensor(temp)
+    #         transcript = open(os.path.join(transcript_path,video_name+'_doc2vec.txt'),'r').readlines()
+    #         transcript = [each.replace('/n','').replace('[','').replace(']','') for each in transcript]
+    #         temp=[]
+    #         for eachShot in transcript:
+    #           temp.append([float(each) for each in eachShot.split(',')])
+    #         transcript = torch.tensor(temp)
         
-            features = representShot(visual_dir=visual_feature_dir,textual=transcript).to(device)
-            groundtruth = load_gt(os.path.join(gt_path,video_name+'_middle_shot_attention.txt')).to(device)
+    #         features = representShot(visual_dir=visual_feature_dir,textual=transcript).to(device)
+    #         groundtruth = load_gt(os.path.join(gt_path,video_name+'_middle_shot_attention.txt')).to(device)
             
-            att_out = model(features)
-            del features
+    #         att_out = model(features)
+    #         del features
             
-            lossout = lossfun(att_out.view(-1,nshots),groundtruth)
-            loss += lossout.item()
-            lossout.backward()
-            optimizer.zero_grad()
-            optimizer.step()
-            print("Epoch {}, loss: {}".format(epoch,loss))
+    #         lossout = lossfun(att_out.view(-1,nshots),groundtruth)
+    #         loss += lossout.item()
+    #         lossout.backward()
+    #         optimizer.zero_grad()
+    #         optimizer.step()
+    #         print("Epoch {}, loss: {}".format(epoch,loss))
         
-        if epoch % eval_rate == eval_rate-1:
-            tmp = evaluate(model,video_list,mask=8)
-            scheduler.step()
-            if tmp>=f_score:
-                f_score = tmp
-                best_model = model
-            print('Epoch {}, f_score: {}, best_fscore: {}'.format(epoch,tmp,f_score))
+    #     if epoch % eval_rate == eval_rate-1:
+    #         tmp = evaluate(model,video_list,mask=8)
+    #         scheduler.step()
+    #         if tmp>=f_score:
+    #             f_score = tmp
+    #             best_model = model
+    #         print('Epoch {}, f_score: {}, best_fscore: {}'.format(epoch,tmp,f_score))
 
             
             
