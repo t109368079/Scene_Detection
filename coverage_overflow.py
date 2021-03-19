@@ -69,15 +69,16 @@ def modification(boundary):
     
 def createScene(src):
     shotInScene = []
-    for i in range(len(src)):
+    for i in range(len(src)-1):
         if i == 0:
             start_shot = 0
-            end_shot = src[i]
+            end_shot = src[i+1]
         else:
-            start_shot = src[i-1]+1
-            end_shot = src[i]
-        scene = [shot for shot in range(start_shot,end_shot+1)]
+            start_shot = src[i]
+            end_shot = src[i+1]
+        scene = [shot for shot in range(start_shot,end_shot)]
         shotInScene.append(scene)
+    shotInScene[-1].append(src[-1])
     return shotInScene
 
 def scoring(coverage,overflow,printed=True,string=None):

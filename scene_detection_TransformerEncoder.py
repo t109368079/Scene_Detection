@@ -382,10 +382,19 @@ def evaluate(model,video_list,mask=30):
     fscore = fscore/len(video_list)
     return fscore
 
-
+def model_eval(model_path,mask=8):
+    video_list = ['01_From_Pole_to_Pole','02_Mountains','03_Ice_Worlds','04_Great_Plains','05_Jungles','06_Seasonal_Forests','07_Fresh_Water',
+                  '08_Ocean_Deep','09_Shallow_Seas','10_Caves','11_Deserts']
+    model = MyTransformer(4396, 4, 6)
+    model.load_state_dict(torch.load(model_path))
+    f_score = evaluate(model, video_list,mask=mask)
+    print("F_score: {}".format(f_score))
+    
     
 if __name__ == '__main__':
-    train_middle_shot(saved=False)
+    # train_middle_shot(saved=True)
+    model_path = 'G:/model/20210319_model.pt'
+    model_eval(model_path)
     # ground_dir = '../'
     # video_list = ['01_From_Pole_to_Pole','02_Mountains','03_Ice_Worlds','04_Great_Plains','05_Jungles','06_Seasonal_Forests','07_Fresh_Water',
     #               '08_Ocean_Deep','09_Shallow_Seas','10_Caves','11_Deserts']
