@@ -11,6 +11,7 @@ import numpy as np
 from datetime import datetime
 from coverage_overflow import fscore_eval
 from scene_detection_TransformerEncoder import MyTransformer, pred_scenes, representShot
+from scene_detection_Encoder_Window import MyTransformer as sde
 
 def visual_feature(visual_dir):
     listShots = os.listdir(visual_dir)
@@ -31,7 +32,7 @@ def load_model(path,textual=False):
     return model
 
 def clean_boundary(nshot,boundary):
-    filter_arr = boundary<nshots
+    filter_arr = boundary<nshot
     boundary = boundary[filter_arr]
     if (nshot-1) not in boundary:
         boundary = np.append(boundary,nshot-1)
@@ -50,14 +51,11 @@ def write_boundary(boundary,video_name,printed=True):
     if printed:
         print('Finish writing {}'.format(video_name))
         
-
+def fix_pred(gt,start_shot):
+    for i in range(len(gt)):
+        gt[i] = gt[i]+start_shot
         
-    
-if __name__ == '__main__':
-    text = True
-    video_list = ['01_From_Pole_to_Pole','02_Mountains','03_Ice_Worlds','04_Great_Plains','05_Jungles','06_Seasonal_Forests',
-                  '07_Fresh_Water','08_Ocean_Deep','09_Shallow_Seas','10_Caves','11_Deserts']
-    model = load_model('G:/model/20210319_model.pt',textual=text)
+def full_video(model,video_list):
     for video_name in video_list:
         visual_feature_dir = os.path.join('../parse_data/',video_name)
         nshots = len(os.listdir(visual_feature_dir))
@@ -78,6 +76,39 @@ if __name__ == '__main__':
         boundary = clean_boundary(nshots,boundary)
         score = fscore_eval(boundary, video_name)
         write_boundary(boundary, video_name,printed=False)
+        
+    
+if __name__ == '__main__':
+    text = False
+    video_list = ['01_From_Pole_to_Pole','02_Mountains','03_Ice_Worlds','04_Great_Plains','05_Jungles','06_Seasonal_Forests',
+                  '07_Fresh_Water','08_Ocean_Deep','09_Shallow_Seas','10_Caves','11_Deserts']
+    windowSize = 30
+    model_path = 'G:/model/20210328_window_model.pt'
+    model = sde(4096,4,6,windowSize)
+    model.load_state_dict(torch.load(model_path))
+    final_score = 0
+    for video_name in video_list:
+        visual_feature_dir = os.path.join('../parse_data/',video_name)
+        nshots = len(os.listdir(visual_feature_dir))
+        nbatch = int(nshots/windowSize)+1
+        feature = visual_feature(visual_feature_dir)
+        pred = torch.tensor([])
+        for i in range(nbatch):
+            start = i*windowSize
+            end = min(nshots,(i+1)*windowSize)
+            src = feature[start:end]
+            att_out = model(src)
+            _,tmp = torch.topk(att_out.view(-1,windowSize),5)
+            fix_pred(tmp, start)
+            pred = torch.cat((pred,tmp))
+        boundary = pred_scenes(pred)
+        boundary = clean_boundary(nshots, boundary)
+        score = fscore_eval(boundary, video_name)
+        final_score += score
+        write_boundary(boundary,video_name)
+    print("Final f_score: {}".format(final_score/len(video_list)))
+        
+    
         
         
         

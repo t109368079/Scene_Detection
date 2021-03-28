@@ -199,8 +199,8 @@ def pred_scenes(pred,mask=8):
             links.append((i,i))    
     scenes = []        
     for link in links:
-        start = min(link)
-        end = max(link)
+        start = int(min(link))
+        end = int(max(link))
         new_scene = [i for i in range(start,end+1)]
         isNew = True
         for i in range(len(scenes)):
