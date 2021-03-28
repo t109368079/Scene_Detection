@@ -60,7 +60,7 @@ class MyTransformer(nn.Module):
     def forward(self,shot_feature):
         num_shot = shot_feature.shape[0]
         src = shot_feature.view(num_shot,1,self.d_model)
-        src = self.pe(src)
+        # src = self.pe(src)
         attention_out = self.encoder(src)
         
         x = F.relu(self.layer1(attention_out))
@@ -68,6 +68,16 @@ class MyTransformer(nn.Module):
         x = self.layer3(x)
         
         return x
+
+def visual_feature(visual_dir):
+    listShots = os.listdir(visual_dir)
+    nShot = len(listShots)
+    feature = torch.empty((nShot,4096))
+    for i in range(nShot):
+        visual_feature_path = os.path.join(visual_dir,listShots[i])
+        tmp = torch.load(visual_feature_path,map_location=torch.device('cpu'))
+        feature[i,:] = tmp
+    return feature
     
 def representShot(visual_dir,textual):
     listShots = os.listdir(visual_dir)
@@ -117,7 +127,7 @@ def model_save(model,save_name=None,epoch=None,save_path=None):
     elif epoch is not None:
       save_name = datetime.today().strftime('%Y%m%d')+'_epoch{}_model.pt'.format(str(epoch))
     if save_path is None:
-      save_path = '../model'
+      save_path = 'G:/model'
     
     save_path = os.path.join(save_path,save_name)
     torch.save(model.state_dict(),save_path)
@@ -131,6 +141,20 @@ def load_gt(gt_path):
         gt.append(int(each))
     gt = torch.tensor(gt)
     return gt
+
+def load_keyShot(video_name):
+    tmp = open('../annotations/scenes/annotator_1/{}.txt'.format(video_name)).readlines()
+    scene_boundary = [int(each) for each in tmp[0].split(',')]
+    tmp = open('../annotations/scenes/annotator_1/{}_keyshot.txt'.format(video_name)).readlines()
+    keyShots = [int(each) for each in tmp[0].split(',')]
+    key_gt = []
+    for i in range(len(keyShots)):
+        key = keyShots[i]
+        length = scene_boundary[i+1]-scene_boundary[i]
+        key_gt += [key for i in range(length)]
+    key_gt = torch.tensor(key_gt)
+    return key_gt
+    
 def acc_fun(predList,gt):
     predList = predList.detach().numpy()
     gt = gt.detach().numpy()
@@ -142,7 +166,7 @@ def acc_fun(predList,gt):
     acc = count/shots
     return acc
 
-def pred_scenes(pred,mask=30):
+def pred_scenes(pred,mask=8):
     """
 
     Parameters
@@ -150,7 +174,7 @@ def pred_scenes(pred,mask=30):
     pred : torch.tensor
         pred are top 5 shot current shot attention to.
     mask : int, optional
-        In pred, only care about the shot in range current index-mask to current index+mask The default is 30.
+        In pred, only care about the shot in range current index-mask to current index+mask The default is 8.
 
     Returns
     -------
@@ -371,7 +395,7 @@ def evaluate(model,video_list,mask=30):
           temp.append([float(each) for each in eachShot.split(',')])
         transcript = torch.tensor(temp)
     
-        features = representShot(visual_dir=visual_feature_dir,textual=transcript)
+        features = visual_feature(visual_dir=visual_feature_dir).to(device)
         
         att_out = model(features)
         _,pred = torch.topk(att_out.view(-1,nshots),5)
@@ -393,72 +417,61 @@ def model_eval(model_path,mask=8):
     
 if __name__ == '__main__':
     # train_middle_shot(saved=True)
-    model_path = 'G:/model/20210319_model.pt'
-    model_eval(model_path)
-    # ground_dir = '../'
-    # video_list = ['01_From_Pole_to_Pole','02_Mountains','03_Ice_Worlds','04_Great_Plains','05_Jungles','06_Seasonal_Forests','07_Fresh_Water',
-    #               '08_Ocean_Deep','09_Shallow_Seas','10_Caves','11_Deserts']
+    # model_path = 'G:/model/20210319_model.pt'
+    # model_eval(model_path)
+    ground_dir = '../'
+    video_list = ['01_From_Pole_to_Pole','02_Mountains','03_Ice_Worlds','04_Great_Plains','05_Jungles','06_Seasonal_Forests','07_Fresh_Water',
+                  '08_Ocean_Deep','09_Shallow_Seas','10_Caves','11_Deserts']
     
-    # transcript_path = os.path.join(ground_dir,'transcript')
-    # gt_path = os.path.join(ground_dir,'annotations/scenes/annotator_1/')
-    # cuda = False
-    # check_file(video_list,ground_dir+'bbc_dataset_video')
-    # device = torch.device('cuda' if cuda else 'cpu')
-    # model = MyTransformer(4396,4,6)
-    # lossfun = nn.CrossEntropyLoss()
-    # optimizer = optim.SGD(model.parameters(),lr=0.1)
-    # scheduler = optim.lr_scheduler.StepLR(optimizer, 5)
-    # epoches =30
-    # eval_rate = 5
-    # nshots = 540
-    # f_score = 0
-    # for epoch in range(epoches):
-    #     loss = 0
-    #     # training, testing = train_test_split(video_list)
-    #     print('Epoch :{}...'.format(epoch))
-    #     for video_name in video_list:
-    #         model.train()
-    #         visual_feature_dir = os.path.join(ground_dir,'parse_data',video_name)
-    #         print("{} Training Start...".format(video_name))
+    transcript_path = os.path.join(ground_dir,'transcript')
+    gt_path = os.path.join(ground_dir,'annotations/scenes/annotator_1/')
+    cuda = False
+    check_file(video_list,ground_dir+'bbc_dataset_video')
+    device = torch.device('cuda' if cuda else 'cpu')
+    model = MyTransformer(4096,4,6)
+    lossfun = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(),lr=0.1)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, 5)
+    epoches =30
+    eval_rate = 5
+    nshots = 540
+    f_score = 0
+    for epoch in range(epoches):
+        loss = 0
+        # training, testing = train_test_split(video_list)
+        print('Epoch :{}...'.format(epoch))
+        for i in range(len(video_list)):
+            video_name = video_list[i]
+            model.train()
+            visual_feature_dir = os.path.join(ground_dir,'parse_data',video_name)
+            print("{} Training Start...".format(video_name))
         
-    #         transcript = open(os.path.join(transcript_path,video_name+'_doc2vec.txt'),'r').readlines()
-    #         transcript = [each.replace('/n','').replace('[','').replace(']','') for each in transcript]
-    #         temp=[]
-    #         for eachShot in transcript:
-    #           temp.append([float(each) for each in eachShot.split(',')])
-    #         transcript = torch.tensor(temp)
+            # transcript = open(os.path.join(transcript_path,video_name+'_doc2vec.txt'),'r').readlines()
+            # transcript = [each.replace('/n','').replace('[','').replace(']','') for each in transcript]
+            # temp=[]
+            # for eachShot in transcript:
+            #   temp.append([float(each) for each in eachShot.split(',')])
+            # transcript = torch.tensor(temp)
         
-    #         features = representShot(visual_dir=visual_feature_dir,textual=transcript).to(device)
-    #         groundtruth = load_gt(os.path.join(gt_path,video_name+'_middle_shot_attention.txt')).to(device)
+            features = visual_feature(visual_dir=visual_feature_dir).to(device)
+            groundtruth = load_keyShot(video_name).to(device)
             
-    #         att_out = model(features)
-    #         del features
+            att_out = model(features)
+            del features
             
-    #         lossout = lossfun(att_out.view(-1,nshots),groundtruth)
-    #         loss += lossout.item()
-    #         lossout.backward()
-    #         optimizer.zero_grad()
-    #         optimizer.step()
-    #         print("Epoch {}, loss: {}".format(epoch,loss))
+            lossout = lossfun(att_out.view(-1,nshots),groundtruth)
+            loss += lossout.item()
+            lossout.backward()
+            optimizer.zero_grad()
+            optimizer.step()
+            print("Epoch {}, loss: {}".format(epoch,loss/(i+1)))
         
-    #     if epoch % eval_rate == eval_rate-1:
-    #         tmp = evaluate(model,video_list,mask=8)
-    #         scheduler.step()
-    #         if tmp>=f_score:
-    #             f_score = tmp
-    #             best_model = model
-    #         print('Epoch {}, f_score: {}, best_fscore: {}'.format(epoch,tmp,f_score))
-
-            
-            
-                
-    
-    
-    
-        
-            
-        
-        
-        
-            
-    
+        if epoch % eval_rate == eval_rate-1:
+            tmp = evaluate(model,video_list,mask=8)
+            scheduler.step()
+            if tmp>=f_score:
+                f_score = tmp
+                best_model = model
+            print('Epoch {}, f_score: {}, best_fscore: {}'.format(epoch,tmp,f_score))
+    model_save(best_model,save_path='G:/model')
+             
