@@ -151,7 +151,7 @@ def coverOverflow(src,tgt):
         
     return coverage, overflow
         
-def fscore_eval(boundary,video_name,printed=True,coverover=False):
+def fscore_eval_bbc(boundary,video_name,printed=True,coverover=False):
     """
     Evaluting fscore for one video. 
     It will calculate will annotator and return the best score for this video.
@@ -194,6 +194,47 @@ def fscore_eval(boundary,video_name,printed=True,coverover=False):
         return np.array(cover_score), np.array(over_score), score
     return score
 
+def fscore_eval(boundary,video_name,gt_path,printed=True,coverover=False):
+    """
+    Evaluting fscore for one video. 
+    It will calculate will annotator and return the best score for this video.
+    Parameters
+    ----------
+    boundary : np.array
+        Prediction boundary, represented in shot index
+    video_name : str
+        video name.
+    printed : bool
+        Print f_score if True, Optional, Default is True
+    coverover: bool
+        return coverage and overflow if True, Optional, Default is False 
+    Returns
+    -------
+    cover : list
+        Coverage for each scene, optional, return if coverover is True
+    over : list
+        Overflow for each scene, optional, return if coverover is True
+    score : float
+        
+    """
+    score = 0
+    cover = []
+    over = []
+    bgt = load_bgt(gt_path,video_name)
+    cover_shot, over_shot = coverOverflow(bgt, boundary)
+    tmp = scoring(cover_shot,over_shot,printed=False)
+    cover.append(cover_shot)
+    over.append(over_shot)
+    if tmp > score:
+        score = tmp
+        cover_score = cover_shot
+        over_score = over_shot
+    if printed:
+        print('{}\t best fscore is {}'.format(video_name,score))
+    if coverover:
+        return np.array(cover_score), np.array(over_score), score
+    return score
+
 def eval_test_all_boundary():
     video_list = ['01_From_Pole_to_Pole','02_Mountains','03_Ice_Worlds','04_Great_Plains','05_Jungles','06_Seasonal_Forests','07_Fresh_Water',
                   '08_Ocean_Deep','09_Shallow_Seas','10_Caves','11_Deserts']
@@ -202,7 +243,7 @@ def eval_test_all_boundary():
         shot_folder = os.path.join('../bbc_dataset_video',video_name)
         nShots = len(os.listdir(shot_folder))    
         boundary = np.array([i for i in range(nShots)])
-        score = fscore_eval(boundary,video_name,printed=True)
+        score = fscore_eval_bbc(boundary,video_name,printed=True)
         tmp += score
     tmp = tmp/len(video_list)
     print('Guess all shot are boundary fscore: {}'.format(tmp))

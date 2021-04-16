@@ -9,7 +9,7 @@ import os
 import torch
 import numpy as np
 from datetime import datetime
-from coverage_overflow import fscore_eval
+from coverage_overflow import fscore_eval_bbc
 from scene_detection_TransformerEncoder import MyTransformer, pred_scenes, representShot
 from scene_detection_Encoder_Window import MyTransformer as sde
 
@@ -39,7 +39,7 @@ def clean_boundary(nshot,boundary):
     return boundary
 
 def write_boundary(boundary,video_name,printed=True):
-    save_dir = 'G:/boundary_result/{}'.format(datetime.today().strftime('%Y%m%d'))
+    save_dir = 'G:/boundary_result/{}_2'.format(datetime.today().strftime('%Y%m%d'))
     if not (os.path.isdir(save_dir)):
         os.mkdir(save_dir)
     save_name = os.path.join(save_dir,video_name+'_boundary.txt')
@@ -74,7 +74,7 @@ def full_video(model,video_list):
         _,pred = torch.topk(att_out.view(-1,nshots),5)
         boundary = pred_scenes(pred)
         boundary = clean_boundary(nshots,boundary)
-        score = fscore_eval(boundary, video_name)
+        score = fscore_eval_bbc(boundary, video_name)
         write_boundary(boundary, video_name,printed=False)
         
     
@@ -82,8 +82,8 @@ if __name__ == '__main__':
     text = False
     video_list = ['01_From_Pole_to_Pole','02_Mountains','03_Ice_Worlds','04_Great_Plains','05_Jungles','06_Seasonal_Forests',
                   '07_Fresh_Water','08_Ocean_Deep','09_Shallow_Seas','10_Caves','11_Deserts']
-    windowSize = 30
-    model_path = 'G:/model/20210328_window_model.pt'
+    windowSize = 15
+    model_path = 'G:/model/20210416_window_model.pt'
     model = sde(4096,4,6,windowSize)
     model.load_state_dict(torch.load(model_path))
     final_score = 0
@@ -103,7 +103,7 @@ if __name__ == '__main__':
             pred = torch.cat((pred,tmp))
         boundary = pred_scenes(pred)
         boundary = clean_boundary(nshots, boundary)
-        score = fscore_eval(boundary, video_name)
+        score = fscore_eval_bbc(boundary, video_name)
         final_score += score
         write_boundary(boundary,video_name)
     print("Final f_score: {}".format(final_score/len(video_list)))
